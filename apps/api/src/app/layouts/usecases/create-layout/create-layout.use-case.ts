@@ -1,17 +1,22 @@
 import { LayoutEntity, LayoutRepository } from '@novu/dal';
 import { Injectable } from '@nestjs/common';
+import { isReservedVariableName } from '@novu/shared';
 
 import { CreateLayoutCommand } from './create-layout.command';
 
+import { CreateLayoutChangeCommand, CreateLayoutChangeUseCase } from '../create-layout-change';
 import { SetDefaultLayoutCommand, SetDefaultLayoutUseCase } from '../set-default-layout';
 import { LayoutDto } from '../../dtos';
-import { ChannelTypeEnum, ITemplateVariable } from '../../types';
+import { ChannelTypeEnum, ITemplateVariable, LayoutId } from '../../types';
 import { ContentService } from '../../../shared/helpers/content.service';
-import { isReservedVariableName } from '@novu/shared';
 
 @Injectable()
 export class CreateLayoutUseCase {
-  constructor(private setDefaultLayout: SetDefaultLayoutUseCase, private layoutRepository: LayoutRepository) {}
+  constructor(
+    private createLayoutChange: CreateLayoutChangeUseCase,
+    private setDefaultLayout: SetDefaultLayoutUseCase,
+    private layoutRepository: LayoutRepository
+  ) {}
 
   async execute(command: CreateLayoutCommand): Promise<LayoutDto> {
     const variables = this.getExtractedVariables(command.variables as ITemplateVariable[], command.content);
@@ -32,7 +37,20 @@ export class CreateLayoutUseCase {
       await this.setDefaultLayout.execute(setDefaultLayoutCommand);
     }
 
+    await this.createChange(command, dto._id);
+
     return dto;
+  }
+
+  private async createChange(command: CreateLayoutCommand, layoutId: LayoutId): Promise<void> {
+    const createLayoutChangeCommand = CreateLayoutChangeCommand.create({
+      environmentId: command.environmentId,
+      layoutId,
+      organizationId: command.organizationId,
+      userId: command.userId,
+    });
+
+    await this.createLayoutChange.execute(createLayoutChangeCommand);
   }
 
   private mapToEntity(domainEntity: CreateLayoutCommand): Omit<LayoutEntity, '_id' | 'createdAt' | 'updatedAt'> {
